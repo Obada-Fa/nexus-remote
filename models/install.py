@@ -4,11 +4,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import sys
 import urllib.request
 
 parser = argparse.ArgumentParser()
 parser.add_argument("model", choices=("quality", "test-tiny"))
 parser.add_argument("--directory", type=Path)
+parser.add_argument("--source", type=Path, help="Install an existing model file without downloading it")
 args = parser.parse_args()
 manifest = json.loads((Path(__file__).parent / "manifest.json").read_text())
 entry = manifest["models"][args.model]
@@ -32,10 +35,17 @@ if not verified(target):
     if temporary.exists():
         temporary.unlink()
     try:
-        request = urllib.request.Request(entry["url"], headers={"User-Agent": "NexusRemote/0.1"})
-        with urllib.request.urlopen(request, timeout=30) as source, temporary.open("wb") as output:
-            while block := source.read(1024 * 1024):
-                output.write(block)
+        if args.source is not None:
+            if not verified(args.source):
+                raise RuntimeError("Local model length or checksum did not match the pinned manifest")
+            print(f"Installing verified model from {args.source}", file=sys.stderr)
+            with args.source.open("rb") as source, temporary.open("wb") as output:
+                shutil.copyfileobj(source, output, 1024 * 1024)
+        else:
+            print(f"Downloading {entry['display_name']} ({entry['bytes'] // 1000000} MB)...", file=sys.stderr)
+            request = urllib.request.Request(entry["url"], headers={"User-Agent": "NexusRemote/0.1"})
+            with urllib.request.urlopen(request, timeout=30) as source, temporary.open("wb") as output:
+                shutil.copyfileobj(source, output, 1024 * 1024)
         if not verified(temporary):
             raise RuntimeError("Model length or checksum did not match the pinned manifest")
         os.replace(temporary, target)

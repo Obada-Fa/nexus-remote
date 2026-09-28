@@ -193,7 +193,7 @@ class _RecordingControlState extends State<RecordingControl> with WidgetsBinding
         ),
       ]),
     if (widget.session.connected && !widget.session.speechSupported)
-      const Text('Install a speech model on the computer to transcribe recordings.',
+      const Text('Speech is unavailable on the computer. Check its model and speech worker setup.',
           style: TextStyle(color: Color(0xFFF4C76B))),
     if (message != null) Text(message!, style: const TextStyle(color: Color(0xFFF4C76B))),
   ]);
