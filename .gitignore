@@ -1,0 +1,9 @@
+mobile/.dart_tool/
+mobile/build/
+companion/target/
+.idea/
+*.log
+dist/*.apk
+dist/*.tar.gz
+**/local.properties
+.DS_Store

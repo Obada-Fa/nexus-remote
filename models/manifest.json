@@ -1,0 +1,21 @@
+{
+  "engine": "whisper.cpp v1.9.4 (927cfce34f31707e17f2bff35c349632fb9e2c3a)",
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "license": "MIT; retain upstream model and whisper.cpp notices",
+  "models": {
+    "quality": {
+      "display_name": "Large v3 Turbo Q5_0 (multilingual)",
+      "filename": "ggml-large-v3-turbo-q5_0.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/98aa99a0a9db05ae2342309f5096248665f7cba3/ggml-large-v3-turbo-q5_0.bin",
+      "bytes": 574041195,
+      "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
+    },
+    "test-tiny": {
+      "display_name": "Tiny Q5_1 (multilingual, development test only)",
+      "filename": "ggml-tiny-q5_1.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/98aa99a0a9db05ae2342309f5096248665f7cba3/ggml-tiny-q5_1.bin",
+      "bytes": 32152673,
+      "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7"
+    }
+  }
+}

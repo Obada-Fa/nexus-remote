@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexusremote.local/protocol/v1.schema.json",
+  "title": "Nexus Remote protocol version 1",
+  "oneOf": [{"$ref": "#/$defs/request"}, {"$ref": "#/$defs/response"}],
+  "$defs": {
+    "request": {
+      "type": "object", "required": ["version", "id", "method", "params"],
+      "properties": {
+        "version": {"const": 1}, "id": {"type": "string", "minLength": 1, "maxLength": 64},
+        "method": {"enum": ["host.info", "controller.acquire", "controller.heartbeat", "controller.release", "input.move", "input.scroll", "input.button", "input.key", "input.release_all", "text.insert", "text.status", "media.list", "media.action", "media.seek", "volume.state", "volume.set", "volume.mute"]},
+        "params": {"type": "object"}
+      }, "additionalProperties": false
+    },
+    "response": {
+      "type": "object", "required": ["version", "id"],
+      "properties": {
+        "version": {"const": 1}, "id": {"type": "string"},
+        "result": {"type": "object"},
+        "error": {"type": "object", "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}
+      }, "oneOf": [{"required": ["result"]}, {"required": ["error"]}], "additionalProperties": false
+    }
+  }
+}
