@@ -32,6 +32,9 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 kotlin {
@@ -42,4 +45,17 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // Android supplies org.json on-device; use its JVM implementation in HTTP tests.
+    testImplementation("org.json:json:20250517")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+}
+
+// The host-test APK includes Flutter's generated assets on AGP 9.
+tasks.matching { it.name == "packageDebugUnitTestForUnitTest" }.configureEach {
+    dependsOn("copyFlutterAssetsDebug")
 }

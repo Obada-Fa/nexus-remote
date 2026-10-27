@@ -3,10 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'session.dart';
+import 'imac_session.dart';
+import 'tv_web_page.dart';
 import 'recording_control.dart';
+import 'taskbar.dart';
+import 'hold_to_transcribe_button.dart';
 
 final sessionProvider = Provider<RemoteSession>((ref) {
   final session = RemoteSession();
+  ref.onDispose(session.dispose);
+  return session;
+});
+
+final imacSessionProvider = Provider<ImacSession>((ref) {
+  final session = ImacSession();
   ref.onDispose(session.dispose);
   return session;
 });
@@ -43,12 +53,19 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(sessionProvider).initialize());
+    Future.microtask(() {
+      ref.read(sessionProvider).initialize();
+      ref.read(imacSessionProvider).initialize();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
+    final imacSession = ref.watch(imacSessionProvider);
+    if (page == 1) {
+      return TvWebPage(session: imacSession, onExit: () => setState(() => page = 0));
+    }
     return ListenableBuilder(
       listenable: session,
       builder: (context, _) => Scaffold(
@@ -56,80 +73,259 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           title: const Text('Nexus Remote'),
           actions: [
             TextButton.icon(
-              onPressed: () => _showPairing(context, session),
-              icon: Icon(session.connected ? Icons.laptop_mac : Icons.link_off),
-              label: Text(session.status),
+              onPressed: () => showPairingDialog(context, session),
+              icon: Icon(
+                session.connected
+                    ? Icons.laptop_mac
+                    : (session.status == 'Connecting' ? Icons.sync : Icons.link_off),
+                color: session.connected
+                    ? const Color(0xFF8AE3CB)
+                    : (session.status == 'Connecting' ? Colors.orangeAccent : const Color(0xFFFF8080)),
+              ),
+              label: Text(
+                session.status,
+                style: TextStyle(
+                  color: session.connected
+                      ? const Color(0xFF8AE3CB)
+                      : (session.status == 'Connecting' ? Colors.orangeAccent : const Color(0xFFFF8080)),
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings_ethernet),
+              tooltip: 'Connection settings',
+              onPressed: () => showPairingDialog(context, session),
             ),
           ],
         ),
         body: SafeArea(
           child: switch (page) {
-            0 => RemotePage(session: session, onWrite: () => setState(() => page = 1)),
-            1 => WritePage(session: session),
+            0 => RemotePage(session: session, onWrite: () => setState(() => page = 2)),
+            2 => WritePage(session: session),
             _ => MediaPage(session: session),
           },
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: page,
-          onDestinationSelected: (value) => setState(() => page = value),
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.touch_app), label: 'Remote'),
-            NavigationDestination(icon: Icon(Icons.edit_note), label: 'Write'),
-            NavigationDestination(icon: Icon(Icons.play_circle_outline), label: 'Media'),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (session.connected && session.windowsSupported)
+              OpenAppsBar(session: session),
+            NavigationBar(
+              selectedIndex: page,
+              onDestinationSelected: (value) => setState(() => page = value),
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.touch_app), label: 'Remote'),
+                NavigationDestination(icon: Icon(Icons.tv), label: 'TV'),
+                NavigationDestination(icon: Icon(Icons.edit_note), label: 'Write'),
+                NavigationDestination(icon: Icon(Icons.play_circle_outline), label: 'Media'),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  Future<void> _showPairing(BuildContext context, RemoteSession session) async {
-    final address = TextEditingController(
-      text: session.address.isEmpty ? '100.108.139.27:45679' : session.address,
+Future<void> showPairingDialog(BuildContext context, RemoteSession session) {
+  return showDialog<void>(
+    context: context,
+    builder: (_) => PairingDialog(session: session),
+  );
+}
+
+class PairingDialog extends StatefulWidget {
+  const PairingDialog({super.key, required this.session});
+  final RemoteSession session;
+
+  @override
+  State<PairingDialog> createState() => _PairingDialogState();
+}
+
+class _PairingDialogState extends State<PairingDialog> {
+  late final TextEditingController address;
+  late final TextEditingController fingerprint;
+  late final TextEditingController code;
+  bool pairing = false;
+  bool showRepairFields = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    address = TextEditingController(
+      text: widget.session.address.isEmpty ? '100.108.139.27:45679' : widget.session.address,
     );
-    final fingerprint = TextEditingController(text: session.fingerprint);
-    final code = TextEditingController();
-    await showDialog<void>(
+    fingerprint = TextEditingController(text: widget.session.fingerprint);
+    code = TextEditingController();
+    showRepairFields = widget.session.hostId.isEmpty;
+  }
+
+  @override
+  void dispose() {
+    address.dispose();
+    fingerprint.dispose();
+    code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      pairing = true;
+      error = null;
+    });
+    try {
+      final inputCode = code.text.trim();
+      final isAlreadyPaired = widget.session.hostId.isNotEmpty;
+      if (inputCode.isNotEmpty || !isAlreadyPaired) {
+        await widget.session.pair(
+          address: address.text,
+          fingerprint: fingerprint.text,
+          code: code.text,
+        );
+      } else {
+        await widget.session.updateAddress(
+          address.text,
+          newFingerprint: fingerprint.text.trim().isNotEmpty ? fingerprint.text : null,
+        );
+      }
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          error = e.toString();
+          pairing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _forgetHost() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Pair computer'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Enter the pairing code shown by the companion on your PC.'),
-            const SizedBox(height: 16),
-            TextField(controller: address, decoration: const InputDecoration(labelText: 'Computer address', hintText: '100.108.139.27:45679')),
-            TextField(controller: code, decoration: const InputDecoration(labelText: 'Pairing code'), keyboardType: TextInputType.number),
-            const SizedBox(height: 8),
-            TextField(controller: fingerprint, decoration: const InputDecoration(labelText: 'TLS SHA-256 fingerprint (optional)', hintText: 'Leave blank to auto-detect'), maxLines: 2),
-          ]),
-        ),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Forget computer?'),
+        content: const Text('This will delete saved credentials. You will need a new pairing code from your PC to reconnect.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
-            onPressed: () async {
-              try {
-                await session.pair(address: address.text, fingerprint: fingerprint.text, code: code.text);
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-              } catch (error) {
-                if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text(error.toString())));
-                }
-              }
-            },
-            child: const Text('Pair'),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFD32F2F)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Forget'),
           ),
         ],
       ),
     );
-    address.dispose();
-    fingerprint.dispose();
-    code.dispose();
+    if (confirmed == true && mounted) {
+      await widget.session.forgetHost();
+      setState(() {
+        showRepairFields = true;
+        address.text = '';
+        fingerprint.text = '';
+        code.text = '';
+        error = null;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPaired = widget.session.hostId.isNotEmpty;
+    return AlertDialog(
+      title: Text(isPaired ? 'Connection settings' : 'Pair computer'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!isPaired)
+              const Text('Enter the pairing code shown by the companion on your PC.')
+            else ...[
+              const Text('Update your computer’s IP or host address below and tap Save & Connect.'),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: address,
+              decoration: const InputDecoration(
+                labelText: 'Computer address',
+                hintText: '192.168.68.240:45679 or 100.108.139.27:45679',
+                border: OutlineInputBorder(),
+              ),
+              enabled: !pairing,
+            ),
+            if (isPaired && !showRepairFields) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: pairing
+                    ? null
+                    : () {
+                        setState(() {
+                          showRepairFields = true;
+                        });
+                      },
+                icon: const Icon(Icons.key, size: 16),
+                label: const Text('Re-pair with new code'),
+              ),
+            ],
+            if (showRepairFields) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: code,
+                decoration: const InputDecoration(
+                  labelText: 'Pairing code',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                enabled: !pairing,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: fingerprint,
+                decoration: const InputDecoration(
+                  labelText: 'TLS SHA-256 fingerprint (optional)',
+                  hintText: 'Leave blank to auto-detect',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+                enabled: !pairing,
+              ),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: 12),
+              Text(error!, style: const TextStyle(color: Color(0xFFFF8080))),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (isPaired)
+          TextButton(
+            onPressed: pairing ? null : _forgetHost,
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFFF8080)),
+            child: const Text('Forget'),
+          ),
+        TextButton(
+          onPressed: pairing ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: pairing ? null : _submit,
+          child: pairing
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : Text(!isPaired || (showRepairFields && code.text.trim().isNotEmpty) ? 'Pair' : 'Save & Connect'),
+        ),
+      ],
+    );
   }
 }
 
 class RemotePage extends StatelessWidget {
-  const RemotePage({super.key, required this.session, required this.onWrite});
+  const RemotePage({super.key, required this.session, this.onWrite});
   final RemoteSession session;
-  final VoidCallback onWrite;
+  final VoidCallback? onWrite;
   void _send(Future<void> Function() command) {
     command().catchError((Object _) {});
   }
@@ -138,15 +334,109 @@ class RemotePage extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(session.inputSupported ? 'Controlling computer'
-              : session.connected ? 'Desktop input unavailable on this computer'
-              : 'Connect to control the computer',
-              style: Theme.of(context).textTheme.titleMedium),
-        ),
-        if (session.error != null) Text(session.error!, style: const TextStyle(color: Color(0xFFFF8080))),
-        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: Text(
+              session.inputSupported
+                  ? 'Controlling computer'
+                  : session.connected
+                      ? 'Desktop input unavailable on this computer'
+                      : 'Connect to control the computer',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          ActionChip(
+            avatar: Icon(
+              session.precisionMode ? Icons.filter_center_focus : Icons.speed,
+              size: 16,
+            ),
+            label: Text(
+              '${((session.touchpadSensitivity * 10) % 1 == 0 ? session.touchpadSensitivity.toStringAsFixed(1) : session.touchpadSensitivity.toStringAsFixed(2))}x'
+              '${session.precisionMode ? " (slow)" : ""}',
+            ),
+            onPressed: () => _showTouchpadSettings(context, session),
+          ),
+        ]),
+        if (!session.connected) ...[
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: session.error != null ? const Color(0xFF241519) : const Color(0xFF161C24),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: session.error != null ? const Color(0xFF6B2A35) : const Color(0xFF2D3948),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      session.error != null
+                          ? Icons.error_outline
+                          : (session.status == 'Connecting' ? Icons.sync : Icons.wifi_off),
+                      size: 20,
+                      color: session.error != null
+                          ? const Color(0xFFFF8080)
+                          : (session.status == 'Connecting' ? Colors.orangeAccent : const Color(0xFFA7B3C2)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        session.status == 'Connecting'
+                            ? 'Connecting to computer...'
+                            : (session.error != null ? 'Connection error' : 'Disconnected'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: session.error != null
+                              ? const Color(0xFFFF8080)
+                              : (session.status == 'Connecting' ? Colors.orangeAccent : Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (session.address.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Target: ${session.address}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFFA7B3C2)),
+                  ),
+                ],
+                if (session.error != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    session.error!,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFFFFB4B4)),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () => showPairingDialog(context, session),
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Change IP / Host'),
+                    ),
+                    if (session.hostId.isNotEmpty)
+                      OutlinedButton.icon(
+                        onPressed: () => session.retry(),
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Retry'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
         Expanded(child: IgnorePointer(ignoring: !session.inputSupported,
           child: Touchpad(session: session))),
         const SizedBox(height: 12),
@@ -168,17 +458,104 @@ class RemotePage extends StatelessWidget {
               child: Text(key)),
         ]),
         const SizedBox(height: 8),
-        ListTile(
-          onTap: onWrite,
-          leading: const Icon(Icons.mic, size: 32),
-          title: const Text('Record a prompt'),
-          subtitle: Text(session.draft.isEmpty ? 'Open Write to review text' : session.draft,
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: const Icon(Icons.chevron_right),
-        ),
+        HoldToTranscribeButton(session: session),
       ]),
     );
   }
+}
+
+void _showTouchpadSettings(BuildContext context, RemoteSession session) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: const Color(0xFF161C24),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setModalState) {
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Touchpad Speed', style: Theme.of(context).textTheme.titleLarge),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Sensitivity: ${session.touchpadSensitivity.toStringAsFixed(2)}x',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Slider(
+                  value: session.touchpadSensitivity.clamp(0.25, 3.0),
+                  min: 0.25,
+                  max: 3.0,
+                  divisions: 11,
+                  label: '${session.touchpadSensitivity.toStringAsFixed(2)}x',
+                  onChanged: (val) {
+                    session.setTouchpadSensitivity(val);
+                    setModalState(() {});
+                  },
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('1.0x (Slow)'),
+                      selected: (session.touchpadSensitivity - 1.0).abs() < 0.05,
+                      onSelected: (_) {
+                        session.setTouchpadSensitivity(1.0);
+                        setModalState(() {});
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('1.75x (Default)'),
+                      selected: (session.touchpadSensitivity - 1.75).abs() < 0.05,
+                      onSelected: (_) {
+                        session.setTouchpadSensitivity(1.75);
+                        setModalState(() {});
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('2.5x (Fast)'),
+                      selected: (session.touchpadSensitivity - 2.5).abs() < 0.05,
+                      onSelected: (_) {
+                        session.setTouchpadSensitivity(2.5);
+                        setModalState(() {});
+                      },
+                    ),
+                  ],
+                ),
+                const Divider(height: 32),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Precision Mode'),
+                  subtitle: const Text('Applies 0.35x multiplier for fine cursor positioning'),
+                  value: session.precisionMode,
+                  onChanged: (val) {
+                    session.setPrecisionMode(val);
+                    setModalState(() {});
+                  },
+                ),
+              ],
+            ),
+          ));
+        },
+      );
+    },
+  );
 }
 
 class Touchpad extends StatefulWidget {
@@ -245,8 +622,9 @@ class _TouchpadState extends State<Touchpad> {
       longPress?.cancel();
     }
     if (pointers.length == 1) {
-      pendingX += delta.dx;
-      pendingY += delta.dy;
+      final multiplier = widget.session.touchpadSensitivity * (widget.session.precisionMode ? 0.35 : 1.0);
+      pendingX += delta.dx * multiplier;
+      pendingY += delta.dy * multiplier;
       frame ??= Timer(const Duration(milliseconds: 16), () {
         frame = null;
         _flush();
@@ -301,7 +679,12 @@ class _TouchpadState extends State<Touchpad> {
       onPointerMove: _move,
       onPointerUp: _up,
       onPointerCancel: _up,
-      child: const Center(child: Text('Touchpad', style: TextStyle(color: Color(0xFFA7B3C2)))),
+      child: Center(
+        child: Text(
+          widget.session.precisionMode ? 'Touchpad (Precision Mode)' : 'Touchpad',
+          style: const TextStyle(color: Color(0xFFA7B3C2)),
+        ),
+      ),
     ),
   );
 }

@@ -5,7 +5,7 @@ import 'dart:typed_data';
 /// Validates the actual recorder output and writes mono 16 kHz PCM16 WAV.
 class AudioNormalizer {
   static Future<void> normalize(File file) async {
-    final source = await file.readAsBytes();
+    final source = file.readAsBytesSync();
     if (source.length < 44 || _tag(source, 0) != 'RIFF' || _tag(source, 8) != 'WAVE') {
       throw const FormatException('Recorder did not produce a WAV file');
     }
@@ -77,7 +77,7 @@ class AudioNormalizer {
     if (output.length > 10 * 1024 * 1024) {
       throw const FormatException('Normalized recording exceeds 10 MiB');
     }
-    await file.writeAsBytes(output, flush: true);
+    file.writeAsBytesSync(output, flush: true);
   }
 
   static String _tag(Uint8List bytes, int offset) =>

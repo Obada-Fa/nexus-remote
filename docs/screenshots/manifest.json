@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-10-27T01:32:22.043448+00:00",
+  "source_commit": "d3e1ed5b93661478b0e417b1134cc40181000d29",
+  "source_tree": "Captured working files prepared for the TV preview release; source hashes identify the exact rendered UI.",
+  "renderer": "Browser at phone viewport; exact TV-served HTML/CSS/JS plus native bridge, with fixture TV state and stubbed native operations. Not a device screenshot.",
+  "native_source_sha256": {
+    "mobile/lib/main.dart": "94488292b76067ee011c39a3f879c84a899bdb674e383d43b01970f0574723de",
+    "mobile/lib/tv_web_page.dart": "3dfc7cbebc3cbb31f06656112dbd23aa41e25e90518de4885acafab505d3a57e",
+    "mobile/lib/tv_volume_control.dart": "aeb0a15d782bc1173b834c377678f0accf97564b4f43cf8a0131b6707fc9a83f",
+    "mobile/assets/tv-native.js": "3dc77c8a69d0936cd1cdb89cd9e6f147a52eac1edef2f52b12ccf24c23fbaaf0",
+    "mobile/android/app/src/main/kotlin/com/example/nexus_remote/MainActivity.kt": "787432843fd303bcd9fde11b3d4cfea19eec68aa1daa151c8bc8ed7bce5ea318",
+    "mobile/android/app/src/main/kotlin/com/example/nexus_remote/TvVolumeService.kt": "735c398b14f48705524d773c33bda90de011ea8ac7d7229e4b5e0b4411cb32b8",
+    "mobile/android/app/src/main/kotlin/com/example/nexus_remote/TvConnection.kt": "ba754075b75192fd58f8fa79f46cd33a0bb1730e9db048c17a72e93ad9f3ad32"
+  },
+  "tv_source_sha256": {
+    "tvapp/web/media-session.js": "f927ece37845915197b7d943ef145066b8650b87d625a97daa39997a4b2fb640",
+    "tvapp/web/app.js": "a5c33e3d0926b77fcb9ed10797adcc31c73f78d422e83eb9e9eb15edc1f6fb9a",
+    "tvapp/web/index.html": "67ba8ae4847b83bde484ccf9db397ee85746f1ba256568a5a945bc1c8ebd9208",
+    "tvapp/web/app.css": "7c411097f90e95fec8e5679a24b03cd2bce96b17b9efdb4f4babc801f9d1264a"
+  },
+  "captures": [
+    {
+      "file": "tv-connections.jpg",
+      "width": 375,
+      "height": 812,
+      "sha256": "861a24ca153743e100c4c676835237ecb78148764e012bcb3e7c5db654ff9f30"
+    },
+    {
+      "file": "tv-remote.jpg",
+      "width": 390,
+      "height": 844,
+      "sha256": "ff026a6b2be30ae802a0a0c54828ff6e749ff55847cb9571f7511c7bcad8fadd"
+    }
+  ]
+}
