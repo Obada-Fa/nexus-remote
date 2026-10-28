@@ -9,7 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import android.os.IBinder
@@ -66,7 +68,39 @@ class PhoneSpeakerService : Service() {
         return START_NOT_STICKY
     }
 
+    /** Voice-call audio goes to the quiet earpiece by default. Use a headset when one is
+     * connected, otherwise the loudspeaker; call mode keeps the phone mic's echo cancelling on. */
+    @Suppress("DEPRECATION")
+    private fun routeAudio(audio: AudioManager) {
+        audio.mode = AudioManager.MODE_IN_COMMUNICATION
+        if (Build.VERSION.SDK_INT >= 31) {
+            val devices = audio.availableCommunicationDevices
+            val headset = listOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_USB_HEADSET)
+            val pick = headset.firstNotNullOfOrNull { type -> devices.firstOrNull { it.type == type } }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            if (pick != null) audio.setCommunicationDevice(pick)
+        } else {
+            audio.isSpeakerphoneOn = !audio.isWiredHeadsetOn && !audio.isBluetoothScoOn
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun releaseAudio(audio: AudioManager) {
+        try {
+            if (Build.VERSION.SDK_INT >= 31) audio.clearCommunicationDevice()
+            else audio.isSpeakerphoneOn = false
+            audio.mode = AudioManager.MODE_NORMAL
+        } catch (_: Exception) {}
+    }
+
     private fun stream(origin: String, cookie: String) {
+        val audio = getSystemService(AudioManager::class.java)
+        try { routeAudio(audio) } catch (_: Exception) {}
+        try { streamLoop(origin, cookie) } finally { releaseAudio(audio) }
+    }
+
+    private fun streamLoop(origin: String, cookie: String) {
         val minimum = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
         val buffer = ByteArray(8192)
         var delay = 1000L
