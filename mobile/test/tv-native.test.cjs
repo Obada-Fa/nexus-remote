@@ -39,7 +39,7 @@ function fixture(supported = true) {
 test('only adds native settings using the existing glass rows', () => {
   const f = fixture();
   assert.equal(f.rows.className, 'glass rows');
-  assert.equal(f.rows.children.length, 3);
+  assert.equal(f.rows.children.length, 5);
   const volume = f.rows.children[0];
   assert.equal(volume.className, 'row');
   assert.equal(volume.getAttribute('role'), 'switch');
@@ -50,8 +50,17 @@ test('only adds native settings using the existing glass rows', () => {
   assert.equal(volume.getAttribute('aria-checked'), 'true');
   volume.onclick();
   assert.equal(f.messages.at(-1).action, 'stop');
-  f.rows.children[1].onclick(); assert.equal(f.messages.at(-1).action, 'address');
-  f.rows.children[2].onclick(); assert.equal(f.messages.at(-1).action, 'exit');
+  const mic = f.rows.children[1];
+  mic.onclick(); assert.equal(f.messages.at(-1).action, 'mic_start');
+  f.native.update({supported: true, mic: {supported: true, enabled: true}});
+  mic.onclick(); assert.equal(f.messages.at(-1).action, 'mic_stop');
+  const speaker = f.rows.children[2];
+  speaker.onclick(); assert.equal(f.messages.at(-1).action, 'speaker_start');
+  f.native.update({supported: true, speaker: {supported: true, enabled: true}});
+  assert.equal(speaker.getAttribute('aria-checked'), 'true');
+  speaker.onclick(); assert.equal(f.messages.at(-1).action, 'speaker_stop');
+  f.rows.children[3].onclick(); assert.equal(f.messages.at(-1).action, 'address');
+  f.rows.children[4].onclick(); assert.equal(f.messages.at(-1).action, 'exit');
 });
 
 test('Android phone-media button uses native controls without a competing audio loop', () => {

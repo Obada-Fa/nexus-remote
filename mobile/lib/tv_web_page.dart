@@ -38,6 +38,7 @@ class _TvWebPageState extends State<TvWebPage> {
     _address = TextEditingController(text: widget.session.address);
     widget.session.hardwareVolume.addListener(_syncNativeState);
     widget.session.phoneMic.addListener(_syncNativeState);
+    widget.session.phoneSpeaker.addListener(_syncNativeState);
     if (_address.text.isNotEmpty) unawaited(_open());
   }
 
@@ -199,12 +200,24 @@ class _TvWebPageState extends State<TvWebPage> {
           await mic.start(origin: _origin!, token: cookie ?? '');
         case 'mic_stop':
           await widget.session.phoneMic.stop();
+        case 'speaker_start':
+          final cookie = await TvVolumeControl.channel.invokeMethod<String>(
+            'pairCookie',
+            {'origin': _origin!.origin},
+          );
+          await widget.session.phoneSpeaker.start(
+            origin: _origin!,
+            token: cookie ?? '',
+          );
+        case 'speaker_stop':
+          await widget.session.phoneSpeaker.stop();
         case 'exit':
           widget.onExit();
           return;
         case 'address':
           await control.stop();
           await widget.session.phoneMic.stop();
+          await widget.session.phoneSpeaker.stop();
           if (mounted) {
             setState(() {
               _web = null;
@@ -239,6 +252,12 @@ class _TvWebPageState extends State<TvWebPage> {
         'busy': widget.session.phoneMic.busy,
         'error': widget.session.phoneMic.error,
       },
+      'speaker': {
+        'supported': widget.session.phoneSpeaker.supported,
+        'enabled': widget.session.phoneSpeaker.enabled,
+        'busy': widget.session.phoneSpeaker.busy,
+        'error': widget.session.phoneSpeaker.error,
+      },
     });
     unawaited(
       _web!
@@ -251,6 +270,7 @@ class _TvWebPageState extends State<TvWebPage> {
   void dispose() {
     widget.session.hardwareVolume.removeListener(_syncNativeState);
     widget.session.phoneMic.removeListener(_syncNativeState);
+    widget.session.phoneSpeaker.removeListener(_syncNativeState);
     _address.dispose();
     super.dispose();
   }

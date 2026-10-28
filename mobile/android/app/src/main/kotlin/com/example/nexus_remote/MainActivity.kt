@@ -60,6 +60,29 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexus_remote/phone_speaker")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "status" -> result.success(PhoneSpeakerService.status())
+                    "stop" -> { PhoneSpeakerService.stop(this); result.success(null) }
+                    "start" -> {
+                        val origin = call.argument<String>("origin") ?: ""
+                        val cookie = call.argument<String>("cookie") ?: ""
+                        try { TvConnection.validate(origin, cookie) } catch (_: Exception) {
+                            result.error("invalid_connection", "Pair with the TV first", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            startForegroundService(Intent(this, PhoneSpeakerService::class.java)
+                                .putExtra("origin", origin).putExtra("cookie", cookie))
+                            result.success(null)
+                        } catch (_: Exception) {
+                            result.error("start_failed", "Could not start the phone speaker. Keep Nexus Remote open and try again.", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexus_remote/tv_volume")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

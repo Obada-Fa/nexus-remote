@@ -60,6 +60,12 @@
   const micValue = make('span', 'rv', 'Off'); mic.append(micValue, make('i', 'htog'));
   mic.onclick = () => send(mic.getAttribute('aria-checked') === 'true' ? 'mic_stop' : 'mic_start');
   rows.append(mic);
+  const speaker = make('button', 'row'); speaker.type = 'button';
+  speaker.setAttribute('role', 'switch');
+  speaker.append(rowText('Phone speaker', 'Plays the TV\'s sound on this phone and makes it the default output, so Discord is heard here.'));
+  const speakerValue = make('span', 'rv', 'Off'); speaker.append(speakerValue, make('i', 'htog'));
+  speaker.onclick = () => send(speaker.getAttribute('aria-checked') === 'true' ? 'speaker_stop' : 'speaker_start');
+  rows.append(speaker);
   const error = make('p', 'note'); error.setAttribute('role', 'status');
   for (const [title, subtitle, action] of [
     ['TV address', 'Connect this app to another TV', 'address'],
@@ -75,7 +81,8 @@
   const hostButtons = Array.from(rows.children);
   const keepHostControls = () => {
     for (const button of hostButtons) {
-      const disabled = (button === volume && !!native.busy) || (button === mic && !!native.mic?.busy);
+      const disabled = (button === volume && !!native.busy) || (button === mic && !!native.mic?.busy) ||
+        (button === speaker && !!native.speaker?.busy);
       if (button.disabled !== disabled) button.disabled = disabled;
     }
   };
@@ -106,7 +113,12 @@
       mic.disabled = !!m.busy;
       mic.setAttribute('aria-checked', String(!!m.enabled));
       micValue.textContent = m.busy ? 'Connecting…' : m.enabled ? 'On' : 'Off';
-      const message = state.error || m.error || '';
+      const sp = state.speaker || {};
+      speaker.hidden = !sp.supported;
+      speaker.disabled = !!sp.busy;
+      speaker.setAttribute('aria-checked', String(!!sp.enabled));
+      speakerValue.textContent = sp.busy ? 'Connecting…' : sp.enabled ? 'On' : 'Off';
+      const message = state.error || m.error || sp.error || '';
       error.textContent = message;
       error.hidden = !message;
     },

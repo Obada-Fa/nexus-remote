@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'phone_mic_control.dart';
+import 'phone_speaker_control.dart';
 import 'tv_volume_control.dart';
 
 class ImacPlaybackInfo {
@@ -35,6 +36,7 @@ class ImacPlaybackInfo {
 class ImacSession extends ChangeNotifier {
   final hardwareVolume = TvVolumeControl();
   final phoneMic = PhoneMicControl();
+  final phoneSpeaker = PhoneSpeakerControl();
   Database? _db;
   Timer? _pollTimer;
   bool _disposed = false;
@@ -478,6 +480,7 @@ class ImacSession extends ChangeNotifier {
     _pollTimer?.cancel();
     hardwareVolume.dispose();
     phoneMic.dispose();
+    phoneSpeaker.dispose();
     super.dispose();
   }
 }
