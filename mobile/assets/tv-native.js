@@ -54,6 +54,12 @@
   const value = make('span', 'rv', 'Off'); volume.append(value, make('i', 'htog'));
   volume.onclick = () => send(volume.getAttribute('aria-checked') === 'true' ? 'stop' : 'start');
   rows.append(volume);
+  const mic = make('button', 'row'); mic.type = 'button';
+  mic.setAttribute('role', 'switch');
+  mic.append(rowText('Phone microphone', 'Makes this phone the TV\'s default microphone while connected.'));
+  const micValue = make('span', 'rv', 'Off'); mic.append(micValue, make('i', 'htog'));
+  mic.onclick = () => send(mic.getAttribute('aria-checked') === 'true' ? 'mic_stop' : 'mic_start');
+  rows.append(mic);
   const error = make('p', 'note'); error.setAttribute('role', 'status');
   for (const [title, subtitle, action] of [
     ['TV address', 'Connect this app to another TV', 'address'],
@@ -69,7 +75,7 @@
   const hostButtons = Array.from(rows.children);
   const keepHostControls = () => {
     for (const button of hostButtons) {
-      const disabled = button === volume && !!native.busy;
+      const disabled = (button === volume && !!native.busy) || (button === mic && !!native.mic?.busy);
       if (button.disabled !== disabled) button.disabled = disabled;
     }
   };
@@ -95,8 +101,14 @@
       volume.disabled = !!state.busy;
       volume.setAttribute('aria-checked', String(!!state.enabled));
       value.textContent = state.busy ? 'Connecting…' : state.enabled ? 'On' : 'Off';
-      error.textContent = state.error || '';
-      error.hidden = !state.error;
+      const m = state.mic || {};
+      mic.hidden = !m.supported;
+      mic.disabled = !!m.busy;
+      mic.setAttribute('aria-checked', String(!!m.enabled));
+      micValue.textContent = m.busy ? 'Connecting…' : m.enabled ? 'On' : 'Off';
+      const message = state.error || m.error || '';
+      error.textContent = message;
+      error.hidden = !message;
     },
   };
   send('status');

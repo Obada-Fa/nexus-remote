@@ -37,6 +37,7 @@ class _TvWebPageState extends State<TvWebPage> {
     super.initState();
     _address = TextEditingController(text: widget.session.address);
     widget.session.hardwareVolume.addListener(_syncNativeState);
+    widget.session.phoneMic.addListener(_syncNativeState);
     if (_address.text.isNotEmpty) unawaited(_open());
   }
 
@@ -87,6 +88,7 @@ class _TvWebPageState extends State<TvWebPage> {
                 _ready = true;
               });
               _syncNativeState();
+              unawaited(_autoShareMic(origin));
             } catch (_) {
               if (mounted) {
                 setState(() {
@@ -151,6 +153,22 @@ class _TvWebPageState extends State<TvWebPage> {
     }
   }
 
+  /// The phone mic becomes the TV's default input as soon as this app is connected.
+  Future<void> _autoShareMic(Uri origin) async {
+    final mic = widget.session.phoneMic;
+    if (!mic.supported) return;
+    await mic.refresh();
+    try {
+      final token = await TvVolumeControl.channel.invokeMethod<String>(
+        'pairCookie',
+        {'origin': origin.origin},
+      );
+      if (token != null && token.isNotEmpty && mounted && _origin == origin) {
+        await mic.autoStart(origin: origin, token: token);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _message(String raw) async {
     if (!mounted || _origin == null) return;
     try {
@@ -172,11 +190,21 @@ class _TvWebPageState extends State<TvWebPage> {
           }
         case 'stop':
           await control.stop();
+        case 'mic_start':
+          final mic = widget.session.phoneMic;
+          final cookie = await TvVolumeControl.channel.invokeMethod<String>(
+            'pairCookie',
+            {'origin': _origin!.origin},
+          );
+          await mic.start(origin: _origin!, token: cookie ?? '');
+        case 'mic_stop':
+          await widget.session.phoneMic.stop();
         case 'exit':
           widget.onExit();
           return;
         case 'address':
           await control.stop();
+          await widget.session.phoneMic.stop();
           if (mounted) {
             setState(() {
               _web = null;
@@ -205,6 +233,12 @@ class _TvWebPageState extends State<TvWebPage> {
       'enabled': control.enabled,
       'busy': control.busy,
       'error': control.error,
+      'mic': {
+        'supported': widget.session.phoneMic.supported,
+        'enabled': widget.session.phoneMic.enabled,
+        'busy': widget.session.phoneMic.busy,
+        'error': widget.session.phoneMic.error,
+      },
     });
     unawaited(
       _web!
@@ -216,6 +250,7 @@ class _TvWebPageState extends State<TvWebPage> {
   @override
   void dispose() {
     widget.session.hardwareVolume.removeListener(_syncNativeState);
+    widget.session.phoneMic.removeListener(_syncNativeState);
     _address.dispose();
     super.dispose();
   }

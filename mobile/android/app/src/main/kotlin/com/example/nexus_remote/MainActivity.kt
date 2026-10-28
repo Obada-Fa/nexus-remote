@@ -18,9 +18,48 @@ class MainActivity : FlutterActivity() {
     private var pendingStart: (() -> Unit)? = null
     private var pendingResult: MethodChannel.Result? = null
     private var pendingImage: MethodChannel.Result? = null
+    private var pendingMic: ((Boolean) -> Unit)? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexus_remote/phone_mic")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "status" -> result.success(PhoneMicService.status())
+                    "stop" -> { pendingMic = null; PhoneMicService.stop(this); result.success(null) }
+                    "wanted" -> result.success(getSharedPreferences("phone_mic", MODE_PRIVATE).getBoolean("wanted", true))
+                    "setWanted" -> {
+                        getSharedPreferences("phone_mic", MODE_PRIVATE).edit()
+                            .putBoolean("wanted", call.argument<Boolean>("wanted") ?: true).apply()
+                        result.success(null)
+                    }
+                    "start" -> {
+                        val origin = call.argument<String>("origin") ?: ""
+                        val cookie = call.argument<String>("cookie") ?: ""
+                        try { TvConnection.validate(origin, cookie) } catch (_: Exception) {
+                            result.error("invalid_connection", "Pair with the TV first", null)
+                            return@setMethodCallHandler
+                        }
+                        val launch = { granted: Boolean ->
+                          if (!granted) result.error("mic_denied", "Allow microphone access to share it with the TV.", null)
+                          else {
+                            try {
+                                startForegroundService(Intent(this, PhoneMicService::class.java)
+                                    .putExtra("origin", origin).putExtra("cookie", cookie))
+                                result.success(null)
+                            } catch (_: Exception) {
+                                result.error("start_failed", "Could not start the phone microphone. Keep Nexus Remote open and try again.", null)
+                            }
+                          }
+                        }
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            pendingMic = launch
+                            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7305)
+                        } else launch(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexus_remote/tv_volume")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -103,6 +142,12 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7305) {
+            val launch = pendingMic
+            pendingMic = null
+            launch?.invoke(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            return
+        }
         if (requestCode == 7301) {
             val launch = pendingStart
             pendingStart = null
