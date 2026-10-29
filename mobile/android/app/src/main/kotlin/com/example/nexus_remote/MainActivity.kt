@@ -20,6 +20,16 @@ class MainActivity : FlutterActivity() {
     private var pendingImage: MethodChannel.Result? = null
     private var pendingMic: ((Boolean) -> Unit)? = null
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // A fresh launch starts clean: sharing left over from the last run stops, and the
+        // TV page turns the mic back on once it reconnects.
+        if (savedInstanceState == null) {
+            PhoneMicService.stop(this)
+            PhoneSpeakerService.stop(this)
+        }
+        super.onCreate(savedInstanceState)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexus_remote/phone_mic")

@@ -181,6 +181,12 @@ class PhoneSpeakerService : Service() {
         stopSelf()
     }
 
+    /** Swiping Nexus Remote away ends sharing; nothing keeps the phone mic or speaker on in the background unasked. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        shutdown()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         running = false
         thread?.interrupt()
