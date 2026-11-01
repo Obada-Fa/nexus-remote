@@ -2,8 +2,8 @@
 
 Flutter remote for a desktop computer, with a full-screen iMac TV section using the TV’s original phone UI. See the [mobile setup and current screenshots](mobile/README.md) for Android background volume buttons and iPhone build limitations. This repository implements a Linux/X11 development build of the [product specification](docs/specification.md).
 
-[Download the Android TV preview APK](https://github.com/Obada-Fa/nexus-remote/releases/download/v1.1.0-preview.1/nexus-remote-1.1.0-android.apk)
-or see the [preview release](https://github.com/Obada-Fa/nexus-remote/releases/tag/v1.1.0-preview.1).
+[Download the Android preview APKs](https://github.com/Obada-Fa/nexus-remote/releases)
+(Nexus Remote, or Nexus TV for only the TV remote). Build them with `bash scripts/build-android.sh`.
 This uses the existing development signing certificate; physical Android and iPhone validation remain pending.
 
 ## Layout

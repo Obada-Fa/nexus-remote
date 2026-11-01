@@ -8,3 +8,4 @@ dist/*.tar.gz
 **/local.properties
 .DS_Store
 __pycache__/
+dist/nexus-*-SHA256SUMS.txt
