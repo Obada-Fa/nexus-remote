@@ -1,0 +1,24 @@
+[Unit]
+Description=Nexus Remote companion (phone as touchpad, keyboard and dictation)
+# Injects X11 input, so it needs the graphical session's DISPLAY.
+After=graphical-session.target network-online.target
+PartOf=graphical-session.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=8
+
+[Service]
+Type=simple
+# Defaults follow README.md: model installed by `models/install.py quality`
+# (default directory ~/.local/share/nexus-remote/models) and the speech worker
+# installed next to the companion in ~/.local/bin. Override with a drop-in.
+Environment=NEXUS_REMOTE_MODEL=%h/.local/share/nexus-remote/models/ggml-large-v3-turbo-q5_0.bin
+Environment=NEXUS_REMOTE_WORKER=%h/.local/bin/nexus-remote-speech-worker
+ExecStart=%h/.local/bin/nexus-remote-companion --service
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target

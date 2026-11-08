@@ -9,9 +9,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use futures_util::StreamExt;
-use rand::RngCore;
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -30,7 +28,7 @@ use x11rb::{
     rust_connection::RustConnection,
 };
 
-const PORT: u16 = 45679;
+mod admin;
 mod media;
 mod speech;
 use speech::SpeechService;
@@ -38,16 +36,10 @@ type ResultJson = Result<Value, (&'static str, &'static str)>;
 #[derive(Clone)]
 struct App {
     db: Arc<Mutex<Connection>>,
-    invitation: Arc<Mutex<Invitation>>,
     lease: Arc<Mutex<Option<Lease>>>,
     desktop: mpsc::Sender<(DesktopCommand, oneshot::Sender<Result<(), String>>)>,
     speech: SpeechService,
     x11_session: bool,
-}
-struct Invitation {
-    code: String,
-    until: Instant,
-    attempts: u8,
 }
 struct Lease {
     owner: String,
@@ -76,28 +68,21 @@ enum DesktopCommand {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let directory = dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("nexus-remote");
-    std::fs::create_dir_all(&directory)?;
-    let db = Connection::open(directory.join("companion.sqlite"))?;
-    db.execute_batch("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL);
-       CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY,name TEXT NOT NULL,hash TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
-       CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY,state TEXT NOT NULL);")?;
-    let host_id: String = db
-        .query_row("SELECT value FROM metadata WHERE key='host_id'", [], |r| {
-            r.get(0)
-        })
-        .unwrap_or_else(|_| {
-            let id = uuid::Uuid::new_v4().to_string();
-            db.execute("INSERT INTO metadata VALUES ('host_id',?1)", [&id])
-                .expect("save host ID");
-            id
-        });
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("admin") {
+        std::process::exit(admin::run(&args[1..]));
+    }
+    let service = args.iter().any(|a| a == "--service");
+    let port = admin::port();
+    let directory = admin::data_dir();
+    let db = admin::open_db(&directory)?;
+    let host_id = admin::host_id(&db)?;
     let (certificate, key, fingerprint) = tls_identity(&directory)?;
-    let mut bytes = [0u8; 4];
-    rand::rng().fill_bytes(&mut bytes);
-    let code = format!("{:08}", u32::from_be_bytes(bytes) % 100_000_000);
+    let code = if service {
+        None
+    } else {
+        Some(admin::create_invite(&db, 900)?.secret)
+    };
     let (tx, rx) = mpsc::channel(256);
     let x11_session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default() != "wayland"
         && std::env::var_os("DISPLAY").is_some();
@@ -107,11 +92,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let speech = SpeechService::new(directory.join("audio"))?;
     let app = App {
         db: Arc::new(Mutex::new(db)),
-        invitation: Arc::new(Mutex::new(Invitation {
-            code: code.clone(),
-            until: Instant::now() + Duration::from_secs(900),
-            attempts: 0,
-        })),
         lease: Arc::new(Mutex::new(None)),
         desktop: tx,
         speech,
@@ -148,11 +128,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(|| async { "ok" }))
         .with_state(app);
     println!("Host ID: {host_id}");
-    println!("Address: https://<computer-address>:{PORT}");
+    println!("Address: https://<computer-address>:{port}");
     println!("TLS SHA-256 fingerprint: {fingerprint}");
-    println!("Pairing code: {code}");
+    if let Some(code) = &code {
+        println!("Pairing code: {code}");
+    }
     let tls = axum_server::tls_rustls::RustlsConfig::from_pem(certificate, key).await?;
-    axum_server::bind_rustls(([0, 0, 0, 0], PORT).into(), tls)
+    axum_server::bind_rustls(([0, 0, 0, 0], port).into(), tls)
         .serve(router.into_make_service())
         .await?;
     Ok(())
@@ -190,47 +172,30 @@ async fn pair(State(app): State<App>, Json(request): Json<PairRequest>) -> impl 
         )
             .into_response();
     }
-    let allowed = {
-        let mut i = app.invitation.lock().unwrap();
-        let allowed = i.until > Instant::now() && i.attempts < 5 && i.code == request.code;
-        if allowed {
-            i.until = Instant::now();
-        } else {
-            i.attempts = i.attempts.saturating_add(1);
-        }
-        allowed
+    let paired = {
+        let mut db = app.db.lock().unwrap();
+        admin::pair_device(&mut db, &request.code, &request.device_name)
     };
-    if !allowed {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(json!({"error":"Invalid or expired pairing code"})),
-        )
-            .into_response();
-    }
-    let mut bytes = [0u8; 32];
-    rand::rng().fill_bytes(&mut bytes);
-    let token = hex::encode(bytes);
-    let hash = hex::encode(Sha256::digest(token.as_bytes()));
-    let id = uuid::Uuid::new_v4().to_string();
-    let host_id = {
-        let db = app.db.lock().unwrap();
-        if db
-            .execute(
-                "INSERT INTO devices (id,name,hash) VALUES (?1,?2,?3)",
-                params![id, request.device_name, hash],
+    let (token, host_id) = match paired {
+        Ok(p) => {
+            let db = app.db.lock().unwrap();
+            let host_id = admin::host_id(&db).unwrap_or_default();
+            (p.token, host_id)
+        }
+        Err(admin::PairError::Invalid) => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error":"Invalid or expired pairing code"})),
             )
-            .is_err()
-        {
+                .into_response();
+        }
+        Err(admin::PairError::Storage) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error":"Could not save device"})),
             )
                 .into_response();
         }
-        db.query_row("SELECT value FROM metadata WHERE key='host_id'", [], |r| {
-            r.get::<_, String>(0)
-        })
-        .unwrap_or_default()
     };
     (
         StatusCode::OK,
@@ -306,23 +271,30 @@ async fn transcribe(State(app): State<App>, headers: HeaderMap, body: Bytes) -> 
     }
 }
 fn authenticated(app: &App, token: &str) -> Option<String> {
-    let hash = hex::encode(Sha256::digest(token.as_bytes()));
-    app.db
-        .lock()
-        .unwrap()
-        .query_row(
-            "SELECT id FROM devices WHERE hash=?1 AND revoked=0",
-            [hash],
-            |r| r.get(0),
-        )
-        .ok()
+    admin::auth_token(&app.db.lock().unwrap(), token)
 }
 async fn socket_loop(app: App, device: String, mut socket: WebSocket) {
-    while let Some(message) = socket.next().await {
-        let Ok(Message::Text(text)) = message else {
-            continue;
+    // Revocation made by the admin process is noticed within this interval.
+    let mut check = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        let message = tokio::select! {
+            m = socket.recv() => m,
+            _ = check.tick() => {
+                if !authenticated_device(&app, &device) {
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                }
+                continue;
+            }
         };
-        if authenticated_device(&app, &device).is_none() {
+        let Some(Ok(message)) = message else { break };
+        let text = match message {
+            Message::Text(text) => text,
+            Message::Close(_) => break,
+            _ => continue,
+        };
+        if !authenticated_device(&app, &device) {
+            let _ = socket.send(Message::Close(None)).await;
             break;
         }
         if text.len() > 512 * 1024 {
@@ -368,16 +340,8 @@ async fn socket_loop(app: App, device: String, mut socket: WebSocket) {
         let _ = dispatch(&app, DesktopCommand::Release).await;
     }
 }
-fn authenticated_device(app: &App, device: &str) -> Option<String> {
-    app.db
-        .lock()
-        .unwrap()
-        .query_row(
-            "SELECT id FROM devices WHERE id=?1 AND revoked=0",
-            [device],
-            |r| r.get(0),
-        )
-        .ok()
+fn authenticated_device(app: &App, device: &str) -> bool {
+    admin::auth_device(&app.db.lock().unwrap(), device)
 }
 
 async fn process(app: &App, device: &str, method: &str, p: Value) -> ResultJson {
@@ -736,11 +700,6 @@ mod tests {
         });
         let app = App {
             db: Arc::new(Mutex::new(db)),
-            invitation: Arc::new(Mutex::new(Invitation {
-                code: String::new(),
-                until: Instant::now(),
-                attempts: 0,
-            })),
             lease: Arc::new(Mutex::new(Some(Lease {
                 owner: "phone".into(),
                 heartbeat: Instant::now(),
