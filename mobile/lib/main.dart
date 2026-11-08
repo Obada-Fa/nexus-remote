@@ -3,20 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'session.dart';
-import 'imac_session.dart';
-import 'tv_web_page.dart';
 import 'recording_control.dart';
 import 'taskbar.dart';
 import 'hold_to_transcribe_button.dart';
 
 final sessionProvider = Provider<RemoteSession>((ref) {
   final session = RemoteSession();
-  ref.onDispose(session.dispose);
-  return session;
-});
-
-final imacSessionProvider = Provider<ImacSession>((ref) {
-  final session = ImacSession();
   ref.onDispose(session.dispose);
   return session;
 });
@@ -55,17 +47,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     super.initState();
     Future.microtask(() {
       ref.read(sessionProvider).initialize();
-      ref.read(imacSessionProvider).initialize();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    final imacSession = ref.watch(imacSessionProvider);
-    if (page == 1) {
-      return TvWebPage(session: imacSession, onExit: () => setState(() => page = 0));
-    }
     return ListenableBuilder(
       listenable: session,
       builder: (context, _) => Scaffold(
@@ -100,8 +87,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         ),
         body: SafeArea(
           child: switch (page) {
-            0 => RemotePage(session: session, onWrite: () => setState(() => page = 2)),
-            2 => WritePage(session: session),
+            0 => RemotePage(session: session, onWrite: () => setState(() => page = 1)),
+            1 => WritePage(session: session),
             _ => MediaPage(session: session),
           },
         ),
@@ -115,7 +102,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               onDestinationSelected: (value) => setState(() => page = value),
               destinations: const [
                 NavigationDestination(icon: Icon(Icons.touch_app), label: 'Remote'),
-                NavigationDestination(icon: Icon(Icons.tv), label: 'TV'),
                 NavigationDestination(icon: Icon(Icons.edit_note), label: 'Write'),
                 NavigationDestination(icon: Icon(Icons.play_circle_outline), label: 'Media'),
               ],

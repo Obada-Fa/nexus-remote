@@ -25,20 +25,6 @@ android {
         versionName = flutter.versionName
     }
 
-    // Nexus Remote is the whole app; Nexus TV is only its TV remote (lib/main_tv.dart) and installs beside it.
-    flavorDimensions += "app"
-    productFlavors {
-        create("full") {
-            dimension = "app"
-            manifestPlaceholders["appLabel"] = "Nexus Remote"
-        }
-        create("tv") {
-            dimension = "app"
-            applicationId = "com.nexus.tv"
-            manifestPlaceholders["appLabel"] = "Nexus TV"
-        }
-    }
-
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

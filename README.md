@@ -1,14 +1,14 @@
 # Nexus Remote
 
-Flutter remote for a desktop computer, with a full-screen iMac TV section using the TV’s original phone UI. See the [mobile setup and current screenshots](mobile/README.md) for Android background volume buttons and iPhone build limitations. This repository implements a Linux/X11 development build of the [product specification](docs/specification.md).
+Flutter remote for a desktop computer. The TV remote is now its own app, Nexus TV, in the Imac repo (`mobile/`). See the [mobile setup and current screenshots](mobile/README.md) for Android background volume buttons and iPhone build limitations. This repository implements a Linux/X11 development build of the [product specification](docs/specification.md).
 
-[Download the Android preview APKs](https://github.com/Obada-Fa/nexus-remote/releases)
-(Nexus Remote, or Nexus TV for only the TV remote). Build them with `bash scripts/build-android.sh`.
+[Download the Android preview APK](https://github.com/Obada-Fa/nexus-remote/releases)
+Build it with `bash scripts/build-android.sh`.
 This uses the existing development signing certificate; physical Android and iPhone validation remain pending.
 
 ## Layout
 
-- `mobile/`: Flutter Android and iPhone host for the original TV remote, with native Android volume handling.
+- `mobile/`: Flutter Android and iPhone app.
 - `companion/`: Rust desktop service and setup command.
 - `protocol/`: version 1 wire contract and fixtures.
 - `speech-worker/`: local C++ whisper.cpp worker.

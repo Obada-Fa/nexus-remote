@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the Android APKs into dist/: nexus-remote-<version>-android.apk and nexus-tv-<version>-android.apk.
+# Build the Android APK into dist/nexus-remote-<version>-android.apk.
+# The Nexus TV app moved to the Imac repo (mobile/, scripts/build-phone-app.sh).
 # Builds from a copy on the Linux disk: gradlew can't be executed from this repo's NTFS drive.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,12 +11,8 @@ rsync -a --exclude build --exclude .dart_tool --exclude android/.gradle "$root/m
 chmod +x "$work/android/gradlew"
 cd "$work"
 flutter=${FLUTTER:-$(command -v flutter || echo "$HOME/flutter/bin/flutter")}
-rm -f "$root/dist/nexus-"{remote,tv}"-$version-"*
-build() {   # flavor entry file output name
-  "$flutter" build apk --release --flavor "$1" -t "$2"
-  cp "build/app/outputs/flutter-apk/app-$1-release.apk" "$root/dist/$3-$version-android.apk"
-  (cd "$root/dist" && sha256sum "$3-$version-android.apk" > "$3-$version-SHA256SUMS.txt")
-}
-build full lib/main.dart nexus-remote
-build tv lib/main_tv.dart nexus-tv
+rm -f "$root/dist/nexus-remote-$version-"*
+"$flutter" build apk --release
+cp build/app/outputs/flutter-apk/app-release.apk "$root/dist/nexus-remote-$version-android.apk"
+(cd "$root/dist" && sha256sum "nexus-remote-$version-android.apk" > "nexus-remote-$version-SHA256SUMS.txt")
 ls -la "$root/dist/"*"-$version-"*
